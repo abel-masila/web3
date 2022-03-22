@@ -17,11 +17,25 @@ const getEthereumContract = () => {
     signer
   );
 
-  console.log({ provider, signer, transcactionContract });
+  return transcactionContract;
 };
 
 export const TransactionProvider = ({ children }) => {
   const [currentAccount, setCurrentAccount] = useState('');
+  const [formData, setFormData] = useState({
+    addressTo: '',
+    amount: '',
+    keyword: '',
+    message: '',
+  });
+  const [isLoading, setIsLoading] = useState(false);
+  const [transactionCount, setTransactionCount] = useState(
+    localStorage.getItem('transactionCount')
+  );
+
+  const handleChange = (e, name) => {
+    setFormData((prevState) => ({ ...prevState, [name]: e.target.value }));
+  };
 
   const checkIfWalletIsConnected = async () => {
     try {
@@ -54,11 +68,61 @@ export const TransactionProvider = ({ children }) => {
     }
   };
 
+  const sendTransaction = async () => {
+    try {
+      if (!ethereum) return alert('Please install metamask');
+      //get data from form
+      const { message, addressTo, keyword, amount } = formData;
+      const transcactionContract = getEthereumContract();
+      const parsedAmount = ethers.utils.parseEther(amount);
+      await ethereum.request({
+        method: 'eth_sendTransaction',
+        params: [
+          {
+            from: currentAccount,
+            to: addressTo,
+            value: parsedAmount._hex,
+            gas: '0x5208', // 21000 gwei
+          },
+        ],
+      });
+      //store transcation
+      const txHash = await transcactionContract.addToBlockchain(
+        addressTo,
+        parsedAmount,
+        message,
+        keyword
+      );
+      setIsLoading(true);
+
+      console.log(`Loading- ${txHash.hash}`);
+      await txHash.wait();
+
+      setIsLoading(false);
+      console.log(`Success- ${txHash.hash}`);
+
+      const transactionCount = transcactionContract.getTransactionCount();
+      setTransactionCount(transactionCount.toNumber());
+    } catch (error) {
+      console.log(error);
+      throw new Error('No ethereum object');
+    }
+  };
+
   React.useEffect(() => {
     checkIfWalletIsConnected();
   }, []);
   return (
-    <TranscationContext.Provider value={{ connectWallet, currentAccount }}>
+    <TranscationContext.Provider
+      value={{
+        connectWallet,
+        currentAccount,
+        formData,
+        setFormData,
+        handleChange,
+        sendTransaction,
+      }}
+    >
       {children}
     </TranscationContext.Provider>
   );
